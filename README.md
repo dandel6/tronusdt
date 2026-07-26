@@ -1,5 +1,7 @@
 # TRON USDT Gateway
 
+한국어 | [English](./README.en.md)
+
 USDT(TRC-20) 입출금 자동화 게이트웨이. 온라인 서비스에 암호화폐 입출금 기능을 붙일 때 필요한 백엔드와 관리자 대시보드를 담았습니다.
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
