@@ -9,6 +9,7 @@ Automated USDT (TRC-20) deposit/withdrawal gateway. Backend and admin dashboard 
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![TRON](https://img.shields.io/badge/TRON-TRC--20-FF0013?logo=tron&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ## Overview
 

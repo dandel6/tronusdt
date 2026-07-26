@@ -9,6 +9,7 @@ USDT(TRC-20) 입출금 자동화 게이트웨이. 온라인 서비스에 암호�
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![TRON](https://img.shields.io/badge/TRON-TRC--20-FF0013?logo=tron&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ## 소개
 
