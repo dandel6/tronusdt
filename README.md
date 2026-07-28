@@ -1,6 +1,6 @@
 # TRON USDT Gateway
 
-[한국어](./README.kr.md) | English
+[한국어](./docs/ko/README.md) | English
 
 Automated USDT (TRC-20) deposit/withdrawal gateway. Backend and admin dashboard for adding crypto payment rails to an online service.
 
