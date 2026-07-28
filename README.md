@@ -1,8 +1,8 @@
 # TRON USDT Gateway
 
-한국어 | [English](./README.en.md)
+[한국어](./README.kr.md) | English
 
-USDT(TRC-20) 입출금 자동화 게이트웨이. 온라인 서비스에 암호화폐 입출금 기능을 붙일 때 필요한 백엔드와 관리자 대시보드를 담았습니다.
+Automated USDT (TRC-20) deposit/withdrawal gateway. Backend and admin dashboard for adding crypto payment rails to an online service.
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)
@@ -11,164 +11,164 @@ USDT(TRC-20) 입출금 자동화 게이트웨이. 온라인 서비스에 암호�
 ![TRON](https://img.shields.io/badge/TRON-TRC--20-FF0013?logo=tron&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-## 소개
+## Overview
 
-거래소를 거치지 않고 자체 서비스에서 USDT 입출금을 받으려면 처리할 일이 생각보다 많습니다. 사용자마다 입금 주소를 발급해야 하고, 블록체인을 지켜보다가 입금을 감지해야 하고, 흩어진 잔액을 핫월렛으로 모아야 합니다. 출금은 탈취 사고를 막을 안전장치가 필수입니다.
+Accepting USDT directly in your own service, without going through an exchange, involves more work than it looks. You need a unique deposit address per user, a watcher that detects incoming transfers on chain, a sweeper that collects scattered balances into a hot wallet, and withdrawal processing with safeguards against theft.
 
-이 프로젝트는 그 전체 사이클을 자동화했습니다. 회원가입 시 전용 입금 주소 발급, 입금 감지, 자동 스위핑, 출금 승인과 전송까지 사람 손 없이 돌아갑니다. 운영에 필요한 통계와 제어는 웹 대시보드와 CLI로 나눠 제공합니다.
+This project automates that entire cycle: per-user address issuance at signup, deposit detection, automatic sweeping, withdrawal approval and transfer. Operational stats and controls are split between a web dashboard and a CLI.
 
-## 전체 흐름
+## Flow
 
 ```mermaid
 flowchart LR
-    subgraph 입금
-        A[회원가입] -->|"BIP44 파생<br/>m/44'/195'/0'/0/{user_id}"| B[전용 입금 주소]
-        B --> C[USDT 입금]
-        C -->|TronGrid 폴링| D[입금 감지]
-        D -->|25블록 확정| E[DB 기록]
-        E --> F[자동 스위핑]
-        F --> G[(메인 핫월렛)]
+    subgraph Deposit
+        A[Signup] -->|"BIP44 derivation<br/>m/44'/195'/0'/0/{user_id}"| B[Dedicated address]
+        B --> C[USDT deposit]
+        C -->|TronGrid polling| D[Detection]
+        D -->|25-block confirmation| E[DB record]
+        E --> F[Auto sweep]
+        F --> G[(Main hot wallet)]
     end
 ```
 
 ```mermaid
 flowchart LR
-    subgraph 출금
-        H[출금 요청] --> I{금액 판정}
-        I -->|임계값 이하| J[자동 전송]
-        I -->|임계값 초과| K[CLI 수동 승인]
+    subgraph Withdrawal
+        H[Withdrawal request] --> I{Amount check}
+        I -->|Below threshold| J[Auto transfer]
+        I -->|Above threshold| K[Manual CLI approval]
         K --> J
-        J --> L[회원 외부 지갑]
-        J -->|Telegram| M[실시간 알림]
+        J --> L[User's external wallet]
+        J -->|Telegram| M[Real-time alert]
     end
 ```
 
-## 핵심 기능
+## Features
 
-### HD Wallet 주소 발급
+### HD wallet address issuance
 
-니모닉 하나에서 BIP44 경로로 사용자별 주소를 파생합니다. 주소가 몇만 개로 늘어도 관리할 시드는 하나입니다. 파생된 개인키는 PBKDF2로 유도한 키로 Fernet 암호화해서 저장하고, 평문 키는 DB에 남기지 않습니다.
+Per-user addresses are derived from a single mnemonic via BIP44 paths. Tens of thousands of addresses, one seed to manage. Derived private keys are encrypted with Fernet using a PBKDF2-derived key; no plaintext keys are stored in the DB.
 
-### 입금 모니터링과 자동 스위핑
+### Deposit monitoring and auto sweeping
 
-TronGrid API를 주기적으로 폴링해서 입금을 감지하고 25블록 확정 후 DB에 반영합니다. 확정된 입금은 임계값(기본 10 USDT)을 넘으면 메인 핫월렛으로 자동 이체됩니다. 개별 주소에 잔액이 방치되지 않습니다.
+A poller hits the TronGrid API on a schedule, detects deposits, and records them after 25 block confirmations. Confirmed balances above a threshold (10 USDT by default) are automatically swept to the main hot wallet, so funds never sit idle on individual addresses.
 
-### 2단계 출금 처리
+### Two-stage withdrawal processing
 
-소액 출금은 자동으로 나갑니다. 임계값을 넘는 대량 출금은 서버 터미널의 CLI에서 관리자가 직접 승인해야 전송됩니다. 웹이 뚫려도 대량 출금은 나갈 수 없는 구조입니다.
+Small withdrawals go out automatically. Withdrawals above the threshold require manual approval by an administrator through the server-side CLI. Even if the web layer is compromised, large withdrawals cannot leave.
 
-### 관리자 대시보드
+### Admin dashboard
 
-Next.js 14 기반. 입출금 현황 차트, 실시간 거래 테이블, 지갑 잔액, 파트너/관리자 계정 관리, 수수료와 한도 설정을 제공합니다. 입금 감지, 대량 출금, 핫월렛 잔액 부족 같은 이벤트는 Telegram으로 실시간 통지합니다.
+Built on Next.js 14. Deposit/withdrawal charts, live transaction table, wallet balances, partner and admin account management, fee and limit settings. Key events (deposit detected, large withdrawal, low hot wallet balance) are pushed to Telegram in real time.
 
-## 보안 설계
+## Security design
 
-이 프로젝트에서 가장 공들인 부분입니다. 자금을 직접 다루는 시스템이라 "관리자 계정이 털리면 어떻게 되는가"를 기준으로 권한을 3단계로 쪼갰습니다.
+This is the part I spent the most time on. The system moves real funds, so permissions are split into three tiers based on the question "what happens if an admin account is compromised?"
 
-| Tier | 접근 경로 | 권한 |
-|------|----------|------|
-| 1 (CLI) | 서버 터미널 (SSH) | 니모닉/개인키 조회, 대량 출금 승인, 긴급 정지, 콜드월렛 이체 |
-| 2 (Super Admin) | 웹 대시보드 | 수수료, 한도, 알림 설정, 파트너/관리자 계정 관리 |
-| 3 (Partner/Staff) | 웹 대시보드 | 자기 파트너 데이터 조회만 가능 |
+| Tier | Access | Permissions |
+|------|--------|-------------|
+| 1 (CLI) | Server terminal (SSH) | Mnemonic/private key access, large withdrawal approval, emergency stop, cold wallet transfer |
+| 2 (Super Admin) | Web dashboard | Fees, limits, alert settings, partner/admin account management |
+| 3 (Partner/Staff) | Web dashboard | Read-only access to own partner data |
 
-키 관련 작업과 대량 자금 이동은 웹에서 아예 불가능하고, 서버에 SSH로 들어와야만 실행할 수 있습니다.
+Key operations and large fund movements are impossible from the web. They require an SSH session on the server.
 
-그 외에 적용한 것들:
+Also in place:
 
-- JWT + TOTP 2FA: 관리자 로그인에 Google Authenticator 방식 2차 인증, 백업 코드 지원
-- 감사 로그: 모든 관리자 행위 기록
-- Rate limiting: slowapi로 API 요청 제한
-- 긴급 제어: 이상 징후 시 CLI에서 입출금 전체 즉시 정지
+- JWT + TOTP 2FA: Google Authenticator-style second factor on admin login, with backup codes
+- Audit log: every admin action is recorded
+- Rate limiting: API request throttling via slowapi
+- Emergency control: instant halt of all deposits/withdrawals from the CLI
 
-## 기술적 의사결정
+## Technical decisions
 
-**폴링 vs 웹훅.** TRON은 이더리움처럼 안정적인 웹훅 인프라가 없어서 TronGrid 폴링을 택했습니다. 대신 API 키 3개를 로테이션해 rate limit을 분산하고, 폴링 주기와 확정 블록 수(25블록)를 설정값으로 빼서 운영 중에 조정할 수 있게 했습니다.
+**Polling vs webhooks.** TRON lacks the webhook infrastructure Ethereum has, so I went with TronGrid polling. To compensate, three API keys are rotated to spread rate limits, and both the polling interval and the confirmation depth (25 blocks) are config values that can be tuned in production.
 
-**스위핑 임계값.** TRON에서 TRC-20 전송은 건당 에너지 수수료가 듭니다. 소액 입금까지 즉시 스위핑하면 수수료가 입금액을 넘는 경우가 생깁니다. 그래서 임계값 미만 잔액은 모아뒀다가 넘을 때 한 번에 이체합니다. TRX 스테이킹으로 에너지를 확보하면 스위핑 비용을 0원까지 낮출 수 있습니다.
+**Sweep threshold.** TRC-20 transfers cost energy fees per transaction. Sweeping every small deposit immediately can cost more in fees than the deposit itself, so balances below the threshold accumulate and get swept in one transfer once they cross it. Staking TRX for energy can bring sweeping cost down to zero.
 
-**대량 출금 수동 승인.** 완전 자동화가 기술적으로는 더 쉽지만, 핫월렛 시스템의 최대 리스크는 서버 침투 후 출금 API 악용입니다. 자동화 편의보다 사고 시 손실 상한을 정하는 쪽을 우선해서, 임계값 초과 출금은 반드시 별도 채널(SSH 접속 + CLI 비밀번호)을 거치게 했습니다.
+**Manual approval for large withdrawals.** Full automation would have been easier to build, but the biggest risk in a hot wallet system is withdrawal API abuse after a server breach. I prioritized capping the loss in an incident over automation convenience: withdrawals above the threshold must go through a separate channel (SSH access plus CLI password).
 
-## 기술 스택
+## Tech stack
 
-| 영역 | 사용 기술 |
-|------|----------|
+| Area | Stack |
+|------|-------|
 | Backend | Python, FastAPI, SQLAlchemy 2.0 (async), APScheduler |
 | Blockchain | tronpy, TronGrid API, hdwallet (BIP39/BIP44) |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, Zustand |
-| DB | MySQL / PostgreSQL / SQLite (async 드라이버) |
-| 보안 | PyJWT, pyotp(TOTP), bcrypt, cryptography(Fernet), slowapi |
-| 알림 | python-telegram-bot |
+| DB | MySQL / PostgreSQL / SQLite (async drivers) |
+| Security | PyJWT, pyotp (TOTP), bcrypt, cryptography (Fernet), slowapi |
+| Alerts | python-telegram-bot |
 
 ## API
 
-서비스 서버와는 REST API로 연동합니다. 모든 요청에 `X-API-Key` 헤더가 필요합니다.
+The service integrates over REST. Every request requires an `X-API-Key` header.
 
-| Method | Endpoint | 설명 |
-|--------|----------|------|
-| POST | /api/wallet/create | 회원 전용 입금 주소 생성 |
-| GET | /api/wallet/{user_id} | 지갑 정보 조회 |
-| GET | /api/deposits/{user_id} | 입금 내역 |
-| POST | /api/withdraw | 출금 요청 |
-| GET | /api/withdrawal/{id} | 출금 상태 |
-| GET | /api/system/status | 시스템 상태 |
-| POST | /api/sweep/all | 전체 수동 스위핑 |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/wallet/create | Create a user deposit address |
+| GET | /api/wallet/{user_id} | Wallet info |
+| GET | /api/deposits/{user_id} | Deposit history |
+| POST | /api/withdraw | Request a withdrawal |
+| GET | /api/withdrawal/{id} | Withdrawal status |
+| GET | /api/system/status | System status |
+| POST | /api/sweep/all | Manual sweep of all wallets |
 
 ```python
 import httpx
 
 headers = {"X-API-Key": "your-key"}
 
-# 입금 주소 발급
+# Create a deposit address
 httpx.post("http://localhost:8000/api/wallet/create",
            headers=headers, json={"user_id": 12345})
 
-# 출금 요청
+# Request a withdrawal
 httpx.post("http://localhost:8000/api/withdraw",
            headers=headers,
            json={"user_id": 12345, "to_address": "TUserWallet...", "amount": 100.0})
 ```
 
-## 프로젝트 구조
+## Project structure
 
 ```
 tron-usdt-gateway/
 ├── app/                        # Backend
-│   ├── api/                    # FastAPI 라우터 (서비스 API + 관리자 API)
-│   ├── auth/                   # JWT + 2FA 인증, RBAC
-│   ├── db/                     # SQLAlchemy 모델 (지갑/입출금/관리자/감사로그)
-│   ├── wallet/                 # HD Wallet 파생, TronGrid 클라이언트
-│   ├── monitor/                # 입금 모니터링
-│   ├── sweeper/                # 자동 스위핑
-│   ├── withdrawal/             # 출금 처리
-│   └── utils/                  # Telegram 알림
-├── scripts/                    # Tier 1 CLI 도구
-│   ├── admin_cli.py            # 통합 런처
-│   ├── wallet_manager.py       # 지갑/키 관리
-│   ├── withdrawal_admin.py     # 대량 출금 승인
-│   ├── emergency_control.py    # 긴급 정지
-│   ├── cold_wallet.py          # 콜드월렛 이체
-│   └── security_audit.py       # 보안 감사
-└── tron-gateway-admin/         # 관리자 대시보드 (Next.js 14)
+│   ├── api/                    # FastAPI routers (service API + admin API)
+│   ├── auth/                   # JWT + 2FA auth, RBAC
+│   ├── db/                     # SQLAlchemy models (wallets/deposits/admins/audit log)
+│   ├── wallet/                 # HD wallet derivation, TronGrid client
+│   ├── monitor/                # Deposit monitoring
+│   ├── sweeper/                # Auto sweeping
+│   ├── withdrawal/             # Withdrawal processing
+│   └── utils/                  # Telegram notifications
+├── scripts/                    # Tier 1 CLI tools
+│   ├── admin_cli.py            # Unified launcher
+│   ├── wallet_manager.py       # Wallet/key management
+│   ├── withdrawal_admin.py     # Large withdrawal approval
+│   ├── emergency_control.py    # Emergency stop
+│   ├── cold_wallet.py          # Cold wallet transfer
+│   └── security_audit.py       # Security audit
+└── tron-gateway-admin/         # Admin dashboard (Next.js 14)
     └── frontend/src/
-        ├── app/                # 대시보드/입출금/지갑/파트너/설정 페이지
-        ├── components/         # 차트, 실시간 거래 테이블 등
-        └── stores/             # Zustand 인증 상태
+        ├── app/                # Dashboard/deposits/wallets/partners/settings pages
+        ├── components/         # Charts, live transaction table, etc.
+        └── stores/             # Zustand auth state
 ```
 
-## 실행
+## Running
 
 ```bash
-# 의존성 설치
+# Install dependencies
 pip install -r requirements.txt
 
-# 초기 설정 (니모닉 생성, .env 구성)
+# Initial setup (mnemonic generation, .env)
 python scripts/setup.py
 
-# 서버 시작
+# Start the server
 python -m app.main
 
-# 관리자 대시보드
+# Admin dashboard
 cd tron-gateway-admin/frontend && npm install && npm run dev
 ```
 
-환경변수는 프로젝트 루트의 `.env`에 설정합니다. 니모닉, 핫월렛 개인키, TronGrid API 키, JWT 시크릿 등이 필요하며 `scripts/setup.py`가 생성을 도와줍니다. 민감 값은 저장소에 포함되지 않습니다.
+Environment variables go in `.env` at the project root: mnemonic, hot wallet private key, TronGrid API keys, JWT secret, and so on. `scripts/setup.py` helps generate them. No sensitive values are committed to the repository.
