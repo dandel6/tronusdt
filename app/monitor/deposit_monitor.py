@@ -58,9 +58,34 @@ class DepositMonitor:
         self.is_running = False
         print("🛑 입금 모니터 중지")
     
+    @staticmethod
+    async def _get_flag(session: AsyncSession, key: str, default: bool) -> bool:
+        """system_settings의 true/false 플래그 조회 (CLI emergency_control.py가 기록)"""
+        result = await session.execute(
+            select(SystemSetting).where(SystemSetting.key == key)
+        )
+        setting = result.scalar_one_or_none()
+        if setting:
+            return setting.value.lower() == "true"
+        return default
+
+    async def _is_monitor_allowed(self, session: AsyncSession) -> bool:
+        """긴급 제어 플래그 확인: emergency_mode=true 또는 deposit_monitor_enabled=false면 폴링 중단"""
+        if await self._get_flag(session, "emergency_mode", False):
+            logger.warning("emergency_mode=true - 입금 폴링 건너뜀")
+            return False
+        if not await self._get_flag(session, "deposit_monitor_enabled", True):
+            logger.warning("deposit_monitor_enabled=false - 입금 폴링 건너뜀")
+            return False
+        return True
+
     async def poll_deposits(self):
         """모든 사용자 주소 입금 확인"""
         async with async_session() as session:
+            # 긴급 제어 플래그 확인 (CLI에서 끈 경우 이번 주기 전체 건너뜀, last_poll_timestamp도 갱신 안 함)
+            if not await self._is_monitor_allowed(session):
+                return
+
             # 마지막 폴링 시간 조회
             last_timestamp = await self._get_last_poll_timestamp(session)
             

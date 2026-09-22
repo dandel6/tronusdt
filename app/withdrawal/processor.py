@@ -12,7 +12,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import async_session, Withdrawal
+from app.db import async_session, Withdrawal, SystemSetting
 from app.wallet import tron_client
 
 logger = logging.getLogger(__name__)
@@ -157,6 +157,28 @@ class WithdrawalProcessor:
             "status": status
         }
     
+    @staticmethod
+    async def _get_flag(session: AsyncSession, key: str, default: bool) -> bool:
+        """system_settings의 true/false 플래그 조회 (CLI emergency_control.py가 기록)"""
+        result = await session.execute(
+            select(SystemSetting).where(SystemSetting.key == key)
+        )
+        setting = result.scalar_one_or_none()
+        if setting:
+            return setting.value.lower() == "true"
+        return default
+
+    async def _is_withdrawal_allowed(self) -> bool:
+        """긴급 제어 플래그 확인: emergency_mode=true 또는 withdrawal_enabled=false면 처리 중단"""
+        async with async_session() as session:
+            if await self._get_flag(session, "emergency_mode", False):
+                logger.warning("emergency_mode=true - 출금 처리 건너뜀")
+                return False
+            if not await self._get_flag(session, "withdrawal_enabled", True):
+                logger.warning("withdrawal_enabled=false - 출금 처리 건너뜀")
+                return False
+        return True
+
     async def process_pending(self) -> Dict[str, int]:
         """
         대기 중인 출금 처리 (DB 잠금으로 이중 처리 방지)
@@ -167,6 +189,10 @@ class WithdrawalProcessor:
             return {"processed": 0, "failed": 0, "skipped": True}
 
         async with self._processing_lock:
+            # 긴급 제어 플래그 확인 (CLI에서 끈 경우 이번 주기 전체 건너뜀)
+            if not await self._is_withdrawal_allowed():
+                return {"processed": 0, "failed": 0, "skipped": True}
+
             logger.info("출금 처리 시작...")
 
             try:

@@ -11,7 +11,7 @@ from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import async_session, UserWallet, Deposit, SweepLog
+from app.db import async_session, UserWallet, Deposit, SweepLog, SystemSetting
 from app.wallet import hd_wallet, tron_client
 
 logger = logging.getLogger(__name__)
@@ -54,9 +54,34 @@ class AutoSweeper:
         self.is_running = False
         print("🛑 자동 스위퍼 중지")
     
+    @staticmethod
+    async def _get_flag(session: AsyncSession, key: str, default: bool) -> bool:
+        """system_settings의 true/false 플래그 조회 (CLI emergency_control.py가 기록)"""
+        result = await session.execute(
+            select(SystemSetting).where(SystemSetting.key == key)
+        )
+        setting = result.scalar_one_or_none()
+        if setting:
+            return setting.value.lower() == "true"
+        return default
+
+    async def _is_sweep_allowed(self, session: AsyncSession) -> bool:
+        """긴급 제어 플래그 확인: emergency_mode=true 또는 sweep_enabled=false면 스윕 중단"""
+        if await self._get_flag(session, "emergency_mode", False):
+            logger.warning("emergency_mode=true - 스위핑 건너뜀")
+            return False
+        if not await self._get_flag(session, "sweep_enabled", True):
+            logger.warning("sweep_enabled=false - 스위핑 건너뜀")
+            return False
+        return True
+
     async def sweep_all(self) -> Dict[str, Any]:
         """모든 스위핑 대상 처리"""
         async with async_session() as session:
+            # 긴급 제어 플래그 확인 (CLI에서 끈 경우 이번 주기 전체 건너뜀)
+            if not await self._is_sweep_allowed(session):
+                return {"swept": 0, "total_amount": 0, "failed": 0, "skipped": True}
+
             # 스위핑 대상 조회
             targets = await self._get_sweep_targets(session)
             
