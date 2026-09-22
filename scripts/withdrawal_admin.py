@@ -25,8 +25,8 @@ from app.wallet.tron_client import TronClient
 from sqlalchemy import select, func, and_
 
 
-# 대량 출금 임계값 (이 금액 이상은 CLI에서만 승인 가능)
-LARGE_WITHDRAWAL_THRESHOLD = float(os.environ.get("LARGE_WITHDRAWAL_THRESHOLD", "1000"))
+# 대량 출금 임계값 (이 금액 이상은 CLI에서만 승인 가능) - app.config와 동일 설정 (env: LARGE_WITHDRAWAL_THRESHOLD)
+LARGE_WITHDRAWAL_THRESHOLD = float(settings.large_withdrawal_threshold)
 
 
 def print_header(title: str):
@@ -65,10 +65,10 @@ async def list_pending_withdrawals():
     await init_db()
 
     async with async_session() as session:
-        # 대기 중인 출금 조회
+        # 대기 중인 출금 조회 (자동 처리 대기 + CLI 승인 대기)
         result = await session.execute(
             select(Withdrawal)
-            .where(Withdrawal.status == WithdrawalStatus.PENDING)
+            .where(Withdrawal.status.in_([WithdrawalStatus.PENDING, WithdrawalStatus.AWAITING_APPROVAL]))
             .order_by(Withdrawal.created_at.asc())
         )
         withdrawals = result.scalars().all()
@@ -89,13 +89,15 @@ async def list_pending_withdrawals():
         for w in withdrawals:
             amount = float(w.amount)
             wtype = "🔴 대량" if amount >= LARGE_WITHDRAWAL_THRESHOLD else "일반"
+            if w.status == WithdrawalStatus.AWAITING_APPROVAL:
+                wtype += " (승인 대기)"
             addr_short = w.to_address[:20] + "..." if len(w.to_address) > 20 else w.to_address
             print(f"{w.id:<8} {w.user_id:<12} {amount:<15,.2f} {addr_short:<40} {wtype:<8}")
 
 
 async def list_large_pending():
-    """대량 출금만 조회"""
-    print_header(f"대량 출금 목록 ({LARGE_WITHDRAWAL_THRESHOLD:,.0f} USDT 이상)")
+    """대량 출금만 조회 (CLI 승인 대기 상태)"""
+    print_header(f"대량 출금 승인 대기 목록 ({LARGE_WITHDRAWAL_THRESHOLD:,.0f} USDT 이상)")
 
     await init_db()
 
@@ -104,7 +106,7 @@ async def list_large_pending():
             select(Withdrawal)
             .where(
                 and_(
-                    Withdrawal.status == WithdrawalStatus.PENDING,
+                    Withdrawal.status == WithdrawalStatus.AWAITING_APPROVAL,
                     Withdrawal.amount >= LARGE_WITHDRAWAL_THRESHOLD
                 )
             )
@@ -148,8 +150,8 @@ async def approve_withdrawal():
             print(f"❌ 출금 ID '{withdrawal_id}'를 찾을 수 없습니다.")
             return
 
-        if withdrawal.status != WithdrawalStatus.PENDING:
-            print(f"❌ 이 출금은 이미 처리되었습니다. (상태: {withdrawal.status.value})")
+        if withdrawal.status != WithdrawalStatus.AWAITING_APPROVAL:
+            print(f"❌ 승인 대기 상태가 아닙니다. (상태: {withdrawal.status.value})")
             return
 
         amount = float(withdrawal.amount)
@@ -168,8 +170,8 @@ async def approve_withdrawal():
             print("취소됨.")
             return
 
-        # 승인 처리 - 상태를 PROCESSING으로 변경
-        withdrawal.status = WithdrawalStatus.PROCESSING
+        # 승인 처리 - 상태를 PENDING으로 변경 (자동 처리기가 다음 주기에 전송)
+        withdrawal.status = WithdrawalStatus.PENDING
         withdrawal.approved_at = datetime.utcnow()
         withdrawal.approved_by = "CLI_ADMIN"
 
@@ -202,8 +204,8 @@ async def approve_all_large():
                 select(Withdrawal).where(Withdrawal.id == w.id)
             )
             withdrawal = result.scalar_one_or_none()
-            if withdrawal and withdrawal.status == WithdrawalStatus.PENDING:
-                withdrawal.status = WithdrawalStatus.PROCESSING
+            if withdrawal and withdrawal.status == WithdrawalStatus.AWAITING_APPROVAL:
+                withdrawal.status = WithdrawalStatus.PENDING
                 withdrawal.approved_at = datetime.utcnow()
                 withdrawal.approved_by = "CLI_ADMIN_BATCH"
 
@@ -233,7 +235,7 @@ async def reject_withdrawal():
             print(f"❌ 출금 ID '{withdrawal_id}'를 찾을 수 없습니다.")
             return
 
-        if withdrawal.status != WithdrawalStatus.PENDING:
+        if withdrawal.status not in (WithdrawalStatus.PENDING, WithdrawalStatus.AWAITING_APPROVAL):
             print(f"❌ 이 출금은 이미 처리되었습니다. (상태: {withdrawal.status.value})")
             return
 

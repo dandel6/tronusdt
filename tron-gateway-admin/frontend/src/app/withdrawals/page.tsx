@@ -72,6 +72,7 @@ export default function WithdrawalsPage() {
                         >
                             <option value="">모든 상태</option>
                             <option value="pending">대기중</option>
+                            <option value="awaiting_approval">승인 대기 (CLI)</option>
                             <option value="processing">처리중</option>
                             <option value="completed">완료됨</option>
                             <option value="failed">실패</option>

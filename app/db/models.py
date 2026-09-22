@@ -17,6 +17,7 @@ Base = declarative_base()
 class WithdrawalStatus(str, Enum):
     """출금 상태"""
     PENDING = "pending"
+    AWAITING_APPROVAL = "awaiting_approval"  # 대량 출금: CLI 승인 대기
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

@@ -35,6 +35,7 @@ class WithdrawalProcessor:
         self.main_wallet_key = settings.main_wallet_private_key
         self.max_daily = Decimal(str(settings.max_daily_withdrawal))
         self.max_single = Decimal(str(settings.max_single_withdrawal))
+        self.large_threshold = Decimal(str(settings.large_withdrawal_threshold))
     
     @staticmethod
     def _generate_idempotency_key(user_id: int, to_address: str, amount: Decimal, timestamp_minute: int) -> str:
@@ -121,7 +122,7 @@ class WithdrawalProcessor:
             .where(
                 and_(
                     Withdrawal.user_id == user_id,
-                    Withdrawal.status.in_(["pending", "processing", "completed"]),
+                    Withdrawal.status.in_(["pending", "awaiting_approval", "processing", "completed"]),
                     func.date(Withdrawal.created_at) == today
                 )
             )
@@ -132,25 +133,28 @@ class WithdrawalProcessor:
             remaining = self.max_daily - daily_total
             raise ValueError(f"일일 출금 한도 초과: 잔여 {remaining} USDT")
 
+        # 대량 출금은 CLI 승인 전까지 자동 처리 대상에서 제외
+        status = "awaiting_approval" if amount >= self.large_threshold else "pending"
+
         # 출금 요청 생성
         withdrawal = Withdrawal(
             user_id=user_id,
             to_address=to_address,
             amount=amount,
-            status="pending"
+            status=status
         )
         session.add(withdrawal)
         await session.commit()
         await session.refresh(withdrawal)
 
-        logger.info(f"출금 요청 생성: #{withdrawal.withdrawal_id}, user={user_id}, amount={amount}")
+        logger.info(f"출금 요청 생성: #{withdrawal.withdrawal_id}, user={user_id}, amount={amount}, status={status}")
 
         return {
             "withdrawal_id": withdrawal.withdrawal_id,
             "user_id": user_id,
             "to_address": to_address,
             "amount": float(amount),
-            "status": "pending"
+            "status": status
         }
     
     async def process_pending(self) -> Dict[str, int]:
@@ -191,6 +195,14 @@ class WithdrawalProcessor:
                     failed = 0
 
                     for withdrawal in pending:
+                        # 안전장치: 임계값 이상 건은 status와 무관하게 CLI 승인 기록(approved_at) 없이는 전송 금지
+                        if withdrawal.amount >= self.large_threshold and not withdrawal.approved_at:
+                            logger.warning(
+                                f"대량 출금 자동 처리 차단: #{withdrawal.withdrawal_id}, "
+                                f"amount={withdrawal.amount}, status={withdrawal.status} - CLI 승인 필요"
+                            )
+                            continue
+
                         if main_balance < withdrawal.amount:
                             logger.warning(f"잔액 부족: #{withdrawal.withdrawal_id}")
                             continue

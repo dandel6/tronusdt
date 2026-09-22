@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # ============ 출금 설정 ============
     max_daily_withdrawal: float = 10000.0
     max_single_withdrawal: float = 5000.0
+    large_withdrawal_threshold: float = 1000.0  # 이 금액 이상은 CLI 승인 전까지 전송 안 함 (env: LARGE_WITHDRAWAL_THRESHOLD)
     
     # ============ 알림 설정 ============
     telegram_bot_token: Optional[str] = None
