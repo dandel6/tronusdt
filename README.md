@@ -15,7 +15,7 @@ Automated USDT (TRC-20) deposit/withdrawal gateway. Backend and admin dashboard 
 
 Accepting USDT directly in your own service, without going through an exchange, involves more work than it looks. You need a unique deposit address per user, a watcher that detects incoming transfers on chain, a sweeper that collects scattered balances into a hot wallet, and withdrawal processing with safeguards against theft.
 
-This project automates that entire cycle: per-user address issuance at signup, deposit detection, automatic sweeping, withdrawal approval and transfer. Operational stats and controls are split between a web dashboard and a CLI.
+This project automates that entire cycle: per-user address issuance at signup, deposit detection, automatic sweeping, and withdrawals: those below the threshold go out automatically, and those at or above it are transferred after CLI approval. Operational stats and controls are split between a web dashboard and a CLI.
 
 ## Flow
 
@@ -36,7 +36,7 @@ flowchart LR
     subgraph Withdrawal
         H[Withdrawal request] --> I{Amount check}
         I -->|Below threshold| J[Auto transfer]
-        I -->|Above threshold| K[Manual CLI approval]
+        I -->|At or above threshold| K[Manual CLI approval]
         K --> J
         J --> L[User's external wallet]
         J -->|Telegram| M[Real-time alert]
@@ -55,7 +55,7 @@ A poller hits the TronGrid API on a schedule, detects deposits, and records them
 
 ### Two-stage withdrawal processing
 
-Small withdrawals go out automatically. Withdrawals above the threshold require manual approval by an administrator through the server-side CLI. Even if the web layer is compromised, large withdrawals cannot leave.
+Small withdrawals go out automatically. Withdrawals at or above the threshold require manual approval by an administrator through the server-side CLI. Even if the web layer is compromised, large withdrawals cannot leave.
 
 ### Admin dashboard
 
@@ -78,7 +78,7 @@ Also in place:
 - JWT + TOTP 2FA: Google Authenticator-style second factor on admin login, with backup codes
 - Audit log: every admin action is recorded
 - Rate limiting: API request throttling via slowapi
-- Emergency control: instant halt of all deposits/withdrawals from the CLI
+- Emergency control: halt all deposits/withdrawals from the CLI, starting with the next processing cycle
 
 ## Technical decisions
 
@@ -86,7 +86,7 @@ Also in place:
 
 **Sweep threshold.** TRC-20 transfers cost energy fees per transaction. Sweeping every small deposit immediately can cost more in fees than the deposit itself, so balances below the threshold accumulate and get swept in one transfer once they cross it. Staking TRX for energy can bring sweeping cost down to zero.
 
-**Manual approval for large withdrawals.** Full automation would have been easier to build, but the biggest risk in a hot wallet system is withdrawal API abuse after a server breach. I prioritized capping the loss in an incident over automation convenience: withdrawals above the threshold must go through a separate channel (SSH access plus CLI password).
+**Manual approval for large withdrawals.** Full automation would have been easier to build, but the biggest risk in a hot wallet system is withdrawal API abuse after a server breach. I prioritized capping the loss in an incident over automation convenience: withdrawals at or above the threshold must go through a separate channel (SSH access plus CLI password).
 
 ## Tech stack
 
@@ -171,4 +171,4 @@ python -m app.main
 cd tron-gateway-admin/frontend && npm install && npm run dev
 ```
 
-Environment variables go in `.env` at the project root: mnemonic, hot wallet private key, TronGrid API keys, JWT secret, and so on. `scripts/setup.py` helps generate them. No sensitive values are committed to the repository.
+Environment variables go in `.env` at the project root: mnemonic, hot wallet private key, TronGrid API keys, JWT secret, and so on. `scripts/setup.py` helps generate them. No sensitive values are committed to the repository. `LARGE_WITHDRAWAL_THRESHOLD` (default 1000 USDT) holds any withdrawal of that amount or more until it is approved from the CLI; do not confuse it with `alert_large_withdrawal_threshold` (500), which only controls alerts.
