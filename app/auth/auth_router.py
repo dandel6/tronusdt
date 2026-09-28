@@ -72,16 +72,16 @@ async def login(
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")  # 분당 10회 제한 (토큰 탈취 악용 방지)
 async def refresh_token(
-    request: RefreshTokenRequest,
-    req: Request,
+    request: Request,
+    body: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session)
 ):
     """토큰 갱신 - Rate Limit: 분당 10회"""
-    ip = get_client_ip(req)
-    
+    ip = get_client_ip(request)
+
     return await AuthService.refresh_token(
         session=session,
-        refresh_token=request.refresh_token,
+        refresh_token=body.refresh_token,
         ip_address=ip
     )
 
@@ -114,19 +114,19 @@ async def logout(
 @router.post("/change-password")
 @limiter.limit("3/minute")  # 분당 3회 제한 (브루트포스 방지)
 async def change_password(
-    request: ChangePasswordRequest,
-    req: Request,
+    request: Request,
+    body: ChangePasswordRequest,
     session: AsyncSession = Depends(get_session),
     admin: dict = Depends(get_current_admin)
 ):
     """비밀번호 변경 - Rate Limit: 분당 3회"""
-    ip = get_client_ip(req)
-    
+    ip = get_client_ip(request)
+
     return await AuthService.change_password(
         session=session,
         admin_id=int(admin["sub"]),
-        current_password=request.current_password,
-        new_password=request.new_password,
+        current_password=body.current_password,
+        new_password=body.new_password,
         ip_address=ip
     )
 
@@ -227,7 +227,7 @@ async def setup_2fa(
 @limiter.limit("5/minute")  # 분당 5회 제한 (2FA 우회 시도 방지)
 async def verify_2fa(
     totp_code: str,
-    req: Request,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     admin: dict = Depends(get_current_admin)
 ):
@@ -259,7 +259,7 @@ async def verify_2fa(
     db_admin.is_2fa_enabled = True
 
     # 감사 로그
-    ip = get_client_ip(req)
+    ip = get_client_ip(request)
     audit_log = AuditLog(
         admin_id=db_admin.admin_id,
         action="2fa_enabled",
@@ -276,7 +276,7 @@ async def verify_2fa(
 @limiter.limit("3/minute")  # 분당 3회 제한 (2FA 비활성화 공격 방지)
 async def disable_2fa(
     password: str,
-    req: Request,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     admin: dict = Depends(get_current_admin)
 ):
@@ -308,7 +308,7 @@ async def disable_2fa(
     db_admin.totp_backup_codes = None
 
     # 감사 로그
-    ip = get_client_ip(req)
+    ip = get_client_ip(request)
     audit_log = AuditLog(
         admin_id=db_admin.admin_id,
         action="2fa_disabled",
@@ -488,8 +488,8 @@ async def create_partner(
 @router.post("/admins")
 @limiter.limit("10/minute")  # 분당 10회 제한 (계정 대량 생성 방지)
 async def create_admin(
-    request: CreateAdminRequest,
-    req: Request,
+    request: Request,
+    body: CreateAdminRequest,
     session: AsyncSession = Depends(get_session),
     admin: dict = Depends(require_permission(Permission.MANAGE_PARTNERS))
 ):
@@ -499,12 +499,12 @@ async def create_admin(
     - Super Admin: 모든 역할 생성 가능
     - Partner Admin: 자신의 파트너 내 Staff만 생성 가능
     """
-    ip = get_client_ip(req)
-    
+    ip = get_client_ip(request)
+
     return await AuthService.create_admin(
         session=session,
         creator_id=int(admin["sub"]),
-        request=request,
+        request=body,
         ip_address=ip
     )
 

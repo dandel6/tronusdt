@@ -43,8 +43,8 @@ limiter = Limiter(key_func=get_remote_address)
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")  # 분당 5회 제한 (브루트포스 방지)
 async def login(
-    req: Request,
-    request: LoginRequest,
+    request: Request,
+    body: LoginRequest,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -54,12 +54,12 @@ async def login(
     - 2FA 활성화 시 totp_code 필요
     - Rate Limit: 분당 5회
     """
-    ip = get_client_ip(req)
-    user_agent = req.headers.get("User-Agent")
+    ip = get_client_ip(request)
+    user_agent = request.headers.get("User-Agent")
 
     return await AuthService.login(
         session=session,
-        request=request,
+        request=body,
         ip_address=ip,
         user_agent=user_agent
     )
@@ -68,8 +68,8 @@ async def login(
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")  # 분당 10회 제한 (토큰 갱신 남용 방지)
 async def refresh_token(
-    req: Request,
-    request: RefreshTokenRequest,
+    request: Request,
+    body: RefreshTokenRequest,
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -77,11 +77,11 @@ async def refresh_token(
 
     - Rate Limit: 분당 10회
     """
-    ip = get_client_ip(req)
+    ip = get_client_ip(request)
 
     return await AuthService.refresh_token(
         session=session,
-        refresh_token=request.refresh_token,
+        refresh_token=body.refresh_token,
         ip_address=ip
     )
 
